@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nexus — Autonomous Incident Response Agent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+  body { font-family: 'Inter', sans-serif; }
+  .agent-trace { border-left: 3px solid; padding-left: 12px; margin: 6px 0; animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .card { background: rgba(255,255,255,0.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3); }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+<nav class="bg-slate-900 text-white sticky top-0 z-50">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center font-bold">N</div>
+      <span class="font-800 tracking-tight text-xl">Nexus</span>
+    </div>
+    <span class="text-slate-400 text-sm">Autonomous Multimodal Incident Response & RCA Agent</span>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+
+  <!-- Header -->
+  <section class="card rounded-2xl p-6 shadow-sm">
+    <h1 class="text-3xl font-800 tracking-tight mb-2">Nexus</h1>
+    <p class="text-slate-600">
+      Upload an incident packet (logs, screenshots, runbook PDFs, chat) and watch six autonomous agents
+      investigate, correlate root cause, and draft a remediation plan — with human approval gates.
+    </p>
+    <div class="flex gap-2 mt-4">
+      <span class="badge bg-cyan-100 text-cyan-800">Multimodal</span>
+      <span class="badge bg-amber-100 text-amber-800">Agentic</span>
+      <span class="badge bg-emerald-100 text-emerald-800">Human-in-the-loop</span>
+    </div>
+  </section>
+
+  <!-- Upload -->
+  <section class="card rounded-2xl p-6 shadow-sm">
+    <h2 class="text-xl font-700 mb-4">1. Submit Incident</h2>
+    <form id="uploadForm" class="space-y-4">
+      <div>
+        <label class="block text-sm font-600 mb-1">Incident description</label>
+        <textarea id="description" rows="3" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-cyan-500" placeholder="e.g. Payment API returning 502 since 14:30 UTC, checkout failing for 12% of users..."></textarea>
+      </div>
+      <div>
+        <label class="block text-sm font-600 mb-1">Evidence files (logs, PDFs, screenshots, chat exports)</label>
+        <input type="file" id="evidence" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-600 file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100" accept=".log,.txt,.md,.pdf,.png,.jpg,.jpeg,.webp,.csv,.json" />
+      </div>
+      <button type="submit" id="startBtn" class="bg-slate-900 hover:bg-slate-800 text-white font-600 px-6 py-3 rounded-lg transition">Start Investigation</button>
+    </form>
+  </section>
+
+  <!-- Live stream -->
+  <section id="streamSection" class="hidden card rounded-2xl p-6 shadow-sm space-y-4">
+    <h2 class="text-xl font-700 flex items-center gap-2">
+      <span class="w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></span> Live Agent Reasoning
+    </h2>
+    <div id="traces" class="h-96 overflow-y-auto border border-slate-200 rounded-lg p-4 bg-slate-100 space-y-2 text-sm"></div>
+    <div class="flex justify-end">
+      <button id="approveBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white font-600 px-6 py-3 rounded-lg transition">Approve RCA &amp; Create Ticket</button>
+      <button id="rejectBtn" class="hidden bg-rose-600 hover:bg-rose-700 text-white font-600 px-6 py-3 rounded-lg transition ml-2">Reject</button>
+    </div>
+  </section>
+
+  <!-- Final report -->
+  <section id="reportSection" class="hidden card rounded-2xl p-6 shadow-lg">
+    <h2 class="text-xl font-700 mb-4">Final Report — Root Cause & Remediation</h2>
+    <div id="reportContent" class="prose prose-slate max-w-none"></div>
+  </section>
+
+</main>
+
+<script>
+const BASE = window.location.origin;
+let sessionId = null;
+let ws = null;
+
+async function post(path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const description = document.getElementById('description').value;
+  const files = document.getElementById('evidence').files;
+
+  const formData = new FormData();
+  for (const f of files) formData.append('files', f);
+
+  // 1. Create session
+  const sess = await post('/api/investigate', { description });
+  sessionId = sess.session_id;
+
+  // 2. Upload evidence
+  await fetch(`${BASE}/api/session/${sessionId}/evidence`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  // 3. Open stream
+  document.getElementById('streamSection').classList.remove('hidden');
+  document.getElementById('uploadForm').classList.add('hidden');
+  openStream(sessionId);
+});
+
+function openStream(sessionId) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/api/session/${sessionId}/stream`);
+  const traces = document.getElementById('traces');
+
+  ws.onmessage = (ev) => {
+    const data = JSON.parse(ev.data);
+    const div = document.createElement('div');
+    div.className = 'agent-trace p-3 rounded bg-white border';
+    const colorMap = {
+      triage: 'border-amber-500',
+      log_analyst: 'border-blue-500',
+      visual_parser: 'border-purple-500',
+      runbook_retriever: 'border-green-500',
+      rca_synthesizer: 'border-cyan-500',
+      remediation_planner: 'border-indigo-500',
+      system: 'border-slate-500',
+    };
+    div.classList.add(colorMap[data.agent] || 'border-slate-300');
+
+    if (data.type === 'trace') {
+      div.innerHTML = `<div class="font-600 text-xs uppercase tracking-wider text-slate-500 mb-1">${data.agent}</div><pre class="text-xs overflow-x-auto whitespace-pre-wrap">${JSON.stringify(data.data, null, 2)}</pre>`;
+    } else if (data.type === 'status') {
+      div.innerHTML = `<div class="italic text-slate-500 text-sm">${data.message}</div>`;
+    } else if (data.type === 'artifact') {
+      div.innerHTML = `<div class="font-600 text-xs uppercase tracking-wider text-slate-500 mb-1">Ingestion</div><pre class="text-xs overflow-x-auto whitespace-pre-wrap">${JSON.stringify(data.data, null, 2)}</pre>`;
+    } else if (data.type === 'approval_required') {
+      div.innerHTML = `<div class="font-600 text-xs uppercase tracking-wider text-rose-600 mb-1">Approval Gate</div><p class="text-sm">${data.data.message}</p><p class="text-sm text-slate-600">${data.data.report_summary}</p>`;
+      document.getElementById('approveBtn').classList.remove('hidden');
+      document.getElementById('rejectBtn').classList.remove('hidden');
+    } else if (data.type === 'ticket') {
+      div.innerHTML = `<div class="font-600 text-xs uppercase tracking-wider text-emerald-600 mb-1">Ticket Created</div><p class="text-sm"><strong>${data.data.ticket_id}</strong>: ${data.data.title}</p><p class="text-xs text-slate-500">${data.data.url}</p>`;
+    }
+    traces.appendChild(div);
+    traces.scrollTop = traces.scrollHeight;
+  };
+
+  ws.onclose = () => {
+    const div = document.createElement('div');
+    div.className = 'agent-trace p-3 rounded bg-slate-50 border border-dashed';
+    div.innerHTML = `<div class="italic text-slate-500">Stream closed.</div>`;
+    traces.appendChild(div);
+  };
+}
+
+document.getElementById('approveBtn').addEventListener('click', async () => {
+  await fetch(`${BASE}/api/session/${sessionId}/approve`, { method: 'POST' });
+  loadReport();
+});
+document.getElementById('rejectBtn').addEventListener('click', async () => {
+  await fetch(`${BASE}/api/session/${sessionId}/reject`, { method: 'POST' });
+  const traces = document.getElementById('traces');
+  const div = document.createElement('div');
+  div.className = 'agent-trace p-3 rounded bg-rose-50 border border-rose-200';
+  div.innerHTML = `<div class="text-rose-600 font-600 text-xs uppercase">Rejected by operator</div>`;
+  traces.appendChild(div);
+  document.getElementById('approveBtn').classList.add('hidden');
+  document.getElementById('rejectBtn').classList.add('hidden');
+});
+
+async function loadReport() {
+  const res = await fetch(`${BASE}/api/session/${sessionId}/report`);
+  const data = await res.json();
+  const section = document.getElementById('reportSection');
+  const content = document.getElementById('reportContent');
+  section.classList.remove('hidden');
+  content.innerHTML = `
+    <h3 class="font-700 text-lg mb-2">Root Cause</h3>
+    <p>${data.report.rca.root_cause}</p>
+    <h3 class="font-700 text-lg mb-2 mt-4">Summary</h3>
+    <p>${data.report.rca.summary}</p>
+    <h3 class="font-700 text-lg mb-2 mt-4">Contributing Factors</h3>
+    <ul class="list-disc pl-6 mb-4">${(data.report.rca.contributing_factors || []).map(f => `<li>${f}</li>`).join('')}</ul>
+    <h3 class="font-700 text-lg mb-2 mt-4">Remediation Plan</h3>
+    <p>${data.report.remediation.action_plan}</p>
+    <h3 class="font-700 text-lg mb-2 mt-4">Confidence</h3>
+    <p class="font-mono">${(data.report.rca.confidence * 100).toFixed(0)}%</p>
+  `;
+  section.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Wire approve/reject endpoints on backend
+fetch(`${BASE}/api/session/${sessionId}/approve`, { method: 'POST' }); // no-op placeholder
+</script>
+</body>
+</html>
