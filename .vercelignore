@@ -1,0 +1,13 @@
+# Vercel ignore patterns
+backend/
+requirements.txt
+.env
+.env.example
+*.py
+*.md
+.git/
+.gitignore
+DEPLOY.md
+NEXUS_PITCH_DECK_CONTENT.md
+deck_spec*.json
+*.pptx
