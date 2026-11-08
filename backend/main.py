@@ -18,6 +18,15 @@ from agents.registry import AGENT_REGISTRY
 
 app = FastAPI(title="Nexus Agentic Incident Response")
 
+# Serve frontend static files
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+
+@app.get("/")
+async def serve_frontend():
+    """Serve the frontend HTML at the root path."""
+    return HTMLResponse(content=Path("frontend/index.html").read_text(), status_code=200)
+
 # In-memory session store (replace with Redis/Postgres for production)
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 
@@ -103,6 +112,7 @@ async def health():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
