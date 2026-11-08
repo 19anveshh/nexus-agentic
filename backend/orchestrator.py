@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from agents.registry import AGENT_REGISTRY, BaseAgent
@@ -110,7 +110,7 @@ class NexusOrchestrator:
             "rca": rca,
             "remediation": remediation,
             "traces": self.packet.agent_traces,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         self.packet.approval_status = "pending"
         yield {

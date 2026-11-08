@@ -79,7 +79,9 @@
 </main>
 
 <script>
-const BASE = window.location.origin;
+// Configurable API base — set window.NEXUS_API_BASE before loading this script
+// e.g. <script>window.NEXUS_API_BASE = "https://your-backend.onrender.com";</script>
+const BASE = window.NEXUS_API_BASE || window.location.origin;
 let sessionId = null;
 let ws = null;
 
@@ -197,8 +199,7 @@ async function loadReport() {
   section.scrollIntoView({ behavior: 'smooth' });
 }
 
-// Wire approve/reject endpoints on backend
-fetch(`${BASE}/api/session/${sessionId}/approve`, { method: 'POST' }); // no-op placeholder
+
 </script>
 </body>
 </html>

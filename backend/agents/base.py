@@ -40,7 +40,7 @@ class BaseAgent:
 
                 client = Groq(api_key=api_key)
                 resp = client.chat.completions.create(
-                    model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+                    model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user", "content": prompt},

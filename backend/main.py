@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -46,7 +46,7 @@ async def start_investigation(payload: StartInvestigation):
     orchestrator = NexusOrchestrator(session_id=session_id)
     SESSIONS[session_id] = {
         "orchestrator": orchestrator,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "initialized",
         "artifacts": [],
     }
@@ -106,6 +106,26 @@ async def get_report(session_id: str):
     }
 
 
+@app.post("/api/session/{session_id}/approve")
+async def approve_investigation(session_id: str):
+    """Approve the RCA and create a remediation ticket."""
+    if session_id not in SESSIONS:
+        return JSONResponse({"error": "session not found"}, status_code=404)
+    orchestrator: NexusOrchestrator = SESSIONS[session_id]["orchestrator"]
+    orchestrator.approve()
+    return {"status": "approved", "session_id": session_id}
+
+
+@app.post("/api/session/{session_id}/reject")
+async def reject_investigation(session_id: str):
+    """Reject the RCA."""
+    if session_id not in SESSIONS:
+        return JSONResponse({"error": "session not found"}, status_code=404)
+    orchestrator: NexusOrchestrator = SESSIONS[session_id]["orchestrator"]
+    orchestrator.reject()
+    return {"status": "rejected", "session_id": session_id}
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "agents": list(AGENT_REGISTRY.keys())}
@@ -115,4 +135,4 @@ if __name__ == "__main__":
     import os
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
